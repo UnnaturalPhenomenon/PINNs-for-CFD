@@ -16,39 +16,19 @@ from typing import Dict, Tuple
 import torch
 import torch.nn as nn
 
-
-def gradients(y: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    """Compute dy/dx with autograd."""
-    return torch.autograd.grad(
-        y,
-        x,
-        grad_outputs=torch.ones_like(y),
-        create_graph=True,
-        retain_graph=True,
-        only_inputs=True,
-    )[0]
-
-
-def laplacian(y: torch.Tensor, x: torch.Tensor, y_var: torch.Tensor) -> torch.Tensor:
-    """Compute Laplacian of y with respect to (x, y_var)."""
-    dy_dx = gradients(y, x)
-    dy_dy = gradients(y, y_var)
-    d2y_dx2 = gradients(dy_dx, x)
-    d2y_dy2 = gradients(dy_dy, y_var)
-    return d2y_dx2 + d2y_dy2
-
+from pinn.autodiff import gradients, laplacian, advection
 
 class MLP(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, width: int = 64, depth: int = 6):
         super().__init__()
-        layers = [nn.Linear(in_dim, width), nn.Tanh()]
+        layers = [nn.Linear(in_dim, width), nn.Tanh()] #input과 hidden layer 묶기
         for _ in range(depth - 1):
-            layers += [nn.Linear(width, width), nn.Tanh()]
-        layers.append(nn.Linear(width, out_dim))
-        self.model = nn.Sequential(*layers)
+            layers += [nn.Linear(width, width), nn.Tanh()] # hidden layer 묶기
+        layers.append(nn.Linear(width, out_dim)) # output layer 묶기
+        self.model = nn.Sequential(*layers) # 모델 정렬
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
+        return self.model(x) # 연산
 
 
 @dataclass
@@ -101,26 +81,23 @@ class PINNForcedConvection(nn.Module):
 
         u, v, p, t = self.forward(x, y)
 
-        u_x = gradients(u, x)
-        u_y = gradients(u, y)
-        v_x = gradients(v, x)
-        v_y = gradients(v, y)
-        p_x = gradients(p, x)
-        p_y = gradients(p, y)
-        t_x = gradients(t, x)
-        t_y = gradients(t, y)
+        # Continuity: div(u,v) = 0
+        r_cont = gradients(u, x) + gradients(v, y)
 
-        u_xx = gradients(u_x, x)
-        u_yy = gradients(u_y, y)
-        v_xx = gradients(v_x, x)
-        v_yy = gradients(v_y, y)
-        t_xx = gradients(t_x, x)
-        t_yy = gradients(t_y, y)
+        # Momentum u: advection(u) + grad(p) - (1/Re)*laplacian(u) = 0
+        adv_u = advection(u, u, v, x, y)
+        lap_u = laplacian(u, x, y)
+        r_u = adv_u + gradients(p, x) - (1.0 / self.re) * lap_u
 
-        r_cont = u_x + v_y
-        r_u = u * u_x + v * u_y + p_x - (1.0 / self.re) * (u_xx + u_yy)
-        r_v = u * v_x + v * v_y + p_y - (1.0 / self.re) * (v_xx + v_yy)
-        r_t = u * t_x + v * t_y - (1.0 / (self.re * self.pr)) * (t_xx + t_yy)
+        # Momentum v: advection(v) + grad(p) - (1/Re)*laplacian(v) = 0
+        adv_v = advection(v, u, v, x, y)
+        lap_v = laplacian(v, x, y)
+        r_v = adv_v + gradients(p, y) - (1.0 / self.re) * lap_v
+
+        # Energy: advection(T) - (1/(Re*Pr))*laplacian(T) = 0
+        adv_t = advection(t, u, v, x, y)
+        lap_t = laplacian(t, x, y)
+        r_t = adv_t - (1.0 / (self.re * self.pr)) * lap_t
 
         return {"continuity": r_cont, "momentum_u": r_u, "momentum_v": r_v, "energy": r_t}
 
@@ -213,4 +190,3 @@ def example_training_step(
     optimizer.step()
 
     return float(loss.item())
-

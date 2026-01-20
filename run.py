@@ -2,6 +2,8 @@ import torch
 import matplotlib.pyplot as plt
 from main import DomainBounds, PINNForcedConvection, example_training_step
 
+image_path = './images/'
+
 # 학습 스텝 수 설정
 STEPS = 1000
 
@@ -36,7 +38,7 @@ if __name__ == "__main__":
             plt.pause(0.01)
     
     # 최종 plot 저장
-    plt.savefig("loss_history.png", dpi=150)
+    plt.savefig(image_path + "loss_history.png", dpi=150)
     print("Loss history plot saved as loss_history.png")
     
     # 모델 저장
