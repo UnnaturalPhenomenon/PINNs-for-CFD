@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 from main import DomainBounds, PINNForcedConvection, example_training_step
+from pinn.domain import DomainExpansion
 
 image_path = './images/'
 
@@ -11,6 +12,7 @@ if __name__ == "__main__":
     bounds = DomainBounds(x_min=0.0, x_max=5.0, y_min=0.0, y_max=1.0)
     model = PINNForcedConvection(bounds=bounds, re=100.0, pr=0.71)
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+    domain = DomainExpansion(x_min=0.0, x_max=5.0, y_min=0.0, y_max=1.0)
 
     loss_history = []
     
@@ -20,7 +22,7 @@ if __name__ == "__main__":
 
     print(f"Starting training with {STEPS} steps...")
     for step in range(STEPS):
-        loss_value = example_training_step(model, optim)
+        loss_value = example_training_step(model, optim, domain)
         loss_history.append(loss_value)
         
         if step % 100 == 0 or step == STEPS - 1:

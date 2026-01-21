@@ -16,7 +16,10 @@ from typing import Dict, Tuple
 import torch
 import torch.nn as nn
 
+from pinn.domain import DomainExpansion
 from pinn.autodiff import gradients, laplacian, advection
+from pinn.pde import (
+    continuity_residual, momentum_u_residual, momentum_v_residual, energy_residual)
 
 class MLP(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, width: int = 64, depth: int = 6):
@@ -82,22 +85,16 @@ class PINNForcedConvection(nn.Module):
         u, v, p, t = self.forward(x, y)
 
         # Continuity: div(u,v) = 0
-        r_cont = gradients(u, x) + gradients(v, y)
+        r_cont = continuity_residual(u, v, x, y)
 
         # Momentum u: advection(u) + grad(p) - (1/Re)*laplacian(u) = 0
-        adv_u = advection(u, u, v, x, y)
-        lap_u = laplacian(u, x, y)
-        r_u = adv_u + gradients(p, x) - (1.0 / self.re) * lap_u
+        r_u = momentum_u_residual(u, v, p, x, y, self.re)
 
         # Momentum v: advection(v) + grad(p) - (1/Re)*laplacian(v) = 0
-        adv_v = advection(v, u, v, x, y)
-        lap_v = laplacian(v, x, y)
-        r_v = adv_v + gradients(p, y) - (1.0 / self.re) * lap_v
+        r_v = momentum_v_residual(u, v, p, x, y, self.re)
 
         # Energy: advection(T) - (1/(Re*Pr))*laplacian(T) = 0
-        adv_t = advection(t, u, v, x, y)
-        lap_t = laplacian(t, x, y)
-        r_t = adv_t - (1.0 / (self.re * self.pr)) * lap_t
+        r_t = energy_residual(t, u, v, x, y, self.re, self.pr)
 
         return {"continuity": r_cont, "momentum_u": r_u, "momentum_v": r_v, "energy": r_t}
 
@@ -175,15 +172,16 @@ class PINNForcedConvection(nn.Module):
 def example_training_step(
     model: PINNForcedConvection,
     optimizer: torch.optim.Optimizer,
+    domain: DomainExpansion,
     n_interior: int = 2000,
     n_boundary: int = 400,
 ) -> float:
     device = next(model.parameters()).device
-    x_int, y_int = model.sample_interior(n_interior, device)
-    bc_points = model.sample_boundaries(n_boundary, device)
+    x_int, y_int = domain.sample_interior(n_interior, device)
+    bc_points = domain.sample_boundaries(n_boundary, device)
 
     optimizer.zero_grad(set_to_none=True)
-    loss_pde = model.pde_loss(x_int, y_int)
+    loss_pde = model.pde_loss(x_int, y_int) 
     loss_bc = model.boundary_loss(bc_points)
     loss = loss_pde + loss_bc
     loss.backward()
