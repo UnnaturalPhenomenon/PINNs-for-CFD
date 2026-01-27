@@ -3,13 +3,13 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from main import DomainBounds, PINNForcedConvection
+from pinn.model import PINNForcedConvection
+from pinn.domain import DomainBounds
 
 image_path = './images/'
 
-def load_model(model_path: str = "model_weights.pth") -> PINNForcedConvection:
+def load_model(bounds: DomainBounds, model_path: str = "model_weights.pth") -> PINNForcedConvection:
     """Load trained model weights from file."""
-    bounds = DomainBounds(x_min=0.0, x_max=5.0, y_min=0.0, y_max=1.0)
     model = PINNForcedConvection(bounds=bounds, re=100.0, pr=0.71)
     model.load_state_dict(torch.load(model_path))
     model.eval()
@@ -200,8 +200,10 @@ def plot_centerline(model: PINNForcedConvection, bounds: DomainBounds):
 
 if __name__ == "__main__":
     print("Loading trained model...")
-    model = load_model("model_weights.pth")
+
     bounds = DomainBounds(x_min=0.0, x_max=5.0, y_min=0.0, y_max=1.0)
+    model = load_model(bounds, "model_weights.pth")
+    
     print("Model loaded successfully!\n")
     
     print("=" * 50)

@@ -1,14 +1,23 @@
 import torch
 import torch.nn as nn
 from typing import Tuple, Dict
+from dataclasses import dataclass
+
+
+@dataclass
+class DomainBounds:
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
 
 class DomainExpansion(nn.Module):
-    def __init__(self, x_min: float, x_max: float, y_min: float, y_max: float):
+    def __init__(self, bounds: DomainBounds):
         super().__init__()
-        self.x_min = x_min
-        self.x_max = x_max
-        self.y_min = y_min
-        self.y_max = y_max
+        self.x_min = bounds.x_min
+        self.x_max = bounds.x_max
+        self.y_min = bounds.y_min
+        self.y_max = bounds.y_max
 
     def ran_num(self, n_max: torch.Tensor, n_min: torch.Tensor, device: torch.device) -> Tuple[torch.Tensor]:
         return torch.rand(n_max, 1, device=device) * (n_max - n_min) + n_min
